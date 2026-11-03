@@ -1,0 +1,134 @@
+{
+  "Comment": "Financial document OCR, extraction, and validation",
+  "StartAt": "Begin",
+  "States": {
+    "Begin": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "begin",
+          "job.$": "$"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "RecordFailure"}],
+      "Next": "AlreadyCompleted"
+    },
+    "AlreadyCompleted": {
+      "Type": "Choice",
+      "Choices": [
+        {"Variable": "$.already_completed", "BooleanEquals": true, "Next": "DuplicateSucceeded"}
+      ],
+      "Default": "WaitForOcr"
+    },
+    "WaitForOcr": {
+      "Type": "Wait",
+      "Seconds": 5,
+      "Next": "PollOcr"
+    },
+    "PollOcr": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "poll_ocr",
+          "job.$": "$"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "RecordFailure"}],
+      "Next": "OcrComplete"
+    },
+    "OcrComplete": {
+      "Type": "Choice",
+      "Choices": [
+        {"Variable": "$.ocr_status", "StringEquals": "IN_PROGRESS", "Next": "WaitForOcr"}
+      ],
+      "Default": "Extract"
+    },
+    "Extract": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "extract",
+          "job.$": "$"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "RecordFailure"}],
+      "Next": "Validate"
+    },
+    "Validate": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "validate",
+          "job.$": "$"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 4,
+          "BackoffRate": 2
+        }
+      ],
+      "Catch": [{"ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "RecordFailure"}],
+      "End": true
+    },
+    "RecordFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${pipeline_lambda_arn}",
+        "Payload": {
+          "action": "fail",
+          "job.$": "$"
+        }
+      },
+      "OutputPath": "$.Payload",
+      "Next": "WorkflowFailed"
+    },
+    "WorkflowFailed": {
+      "Type": "Fail",
+      "Error": "DocumentProcessingFailed",
+      "Cause": "See the DynamoDB job record and CloudWatch logs"
+    },
+    "DuplicateSucceeded": {
+      "Type": "Succeed"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.*
+infra/terraform.tfvars
+infra/tfplan
+crash.log
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
